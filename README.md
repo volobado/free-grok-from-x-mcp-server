@@ -13,6 +13,13 @@ $ Get-Content main.py | grokx "Review the error handling"
 $ grokx -n "Start a fresh chat and list 3 ideas"
 ```
 
+> [!IMPORTANT]
+> **Worth it mainly with X Premium / Premium+.** "Free" here means no API key and no API bill,
+> not unlimited Grok: you get exactly your account's Grok quota. On the free X tier the quota runs
+> out after roughly ten questions (Grok then answers `usage_limit_reached`, see Limitations), which
+> is too little for agents or daily terminal use. If you are on the free tier, this tool is probably
+> not worth installing.
+
 [Русская версия](README.ru.md)
 
 ## How it works
