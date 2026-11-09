@@ -85,6 +85,16 @@ def grok_frames(message: str):
     def e(event):
         return json.dumps({"session_id": sid, "event": event}, ensure_ascii=False)
 
+    if prompt == "LIMIT":   # exact frames seen live when the free tier ran out
+        return [
+            e({"type": "response.created", "client_event_id": ev["event_id"], "response": {"id": rid}}),
+            e({"type": "response.grok.output", "response_id": rid, "output": {"stream_error": {
+                "kind": "usage_limit_reached", "message": "You've reached your usage limit. Please try again later.",
+                "severity": "normal"}}}),
+            e({"type": "response.output_text.done", "response_id": rid, "text": ""}),
+            e({"type": "response.done", "response": {"id": rid, "status": "incomplete",
+                                                      "status_details": {"reason": "stream_error"}}}),
+        ]
     frames = [
         e({"type": "conversation.queue.updated", "items": []}),
         json.dumps({"event": {"type": "conversation.live.updated", "streaming": True}}),
@@ -194,6 +204,10 @@ async def test_extension(pw):
         assert done == expected("один раз"), (done, err)
         print("ok  prompt not duplicated, input left empty")
 
+        text, done, err, n = await collect(client.stream_query("LIMIT"))
+        assert done is None and err and "usage_limit_reached" in err and "Events of this" not in err, err
+        print("ok  usage limit reported as such:", err)
+
         await page.evaluate("history.pushState({}, '', '/home')")
         await asyncio.sleep(1.5)
         assert await page.query_selector("#grokx-bridge-badge") is None
@@ -289,6 +303,9 @@ async def test_cdp(pw):
         ok, full = await orch.query_full("второй")
         assert ok and full == expected("второй"), full
         print("ok  CDP /new and second answer")
+        ok, msg = await orch.query_full("LIMIT")
+        assert not ok and "usage_limit_reached" in msg, msg
+        print("ok  CDP usage limit reported")
 
         await orch.close()
         assert is_cdp_listening(CDP_PORT), "closing grokx must not close Chrome"

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GrokX - Terminal Bridge",
-  "version": "1.5.0",
+  "version": "1.5.4",
   "description": "Bridges the x.com/i/grok web session with the local grokx terminal CLI",
   "minimum_chrome_version": "116",
   "permissions": ["alarms"],

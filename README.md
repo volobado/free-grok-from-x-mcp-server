@@ -109,7 +109,7 @@ for the first second after load. Verified live as well: answers, new chat, follo
 
 ## Limitations and disclaimer
 
-- You need to be logged in to X; Grok's limits for your account apply as in the browser.
+- You need to be logged in to X; Grok's limits for your account apply as in the browser. When the free tier runs out, grokx says so (Grok's `usage_limit_reached`) instead of failing vaguely.
 - Images and attachments in answers come back as text only.
 - A daemon started from an MCP host exits together with it and restarts on the next question.
 - This is an unofficial personal tool, not affiliated with X or xAI. It automates the web page you

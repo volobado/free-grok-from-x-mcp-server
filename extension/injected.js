@@ -203,14 +203,16 @@
   //       (other channels: NOTETAKER_HEADER "Thinking about your request", thinking, phase markers)
   //   in  {"event":{"type":"response.output_text.done","response_id":R,...}}
   // "conversation.live.updated streaming:false" arrives BEFORE the last chunks, so it is not an end marker.
-  const WS_DONE_GRACE_MS = 1500;      // more output after output_text.done (multi-step agent answers)
-  const WS_IDLE_DONE_MS = 60000;      // nothing at all for this long after some text -> finish
-  const wsResponses = new Map();      // response_id -> {strict, loose, timer}
+  // Ending: "output_text.done" also fires for intermediate agent steps (web / X search) BEFORE the
+  // answer exists (seen live), so it only ends the response once answer text has arrived.
+  const WS_DONE_GRACE_MS = 2500;      // after output_text.done with text: wait for more steps
+  const WS_IDLE_DONE_MS = 180000;     // no event at all for this response this long -> finish
+  const wsResponses = new Map();      // response_id -> {strict, loose, timer, doneSeen, trace}
 
   function wsResp(id) {
     let r = wsResponses.get(id);
     if (!r) {
-      r = { id: 'ws_' + id, strict: '', loose: '', timer: null, finished: false };
+      r = { id: 'ws_' + id, strict: '', loose: '', timer: null, finished: false, doneSeen: false, trace: [] };
       wsResponses.set(id, r);
       emit({ type: 'GROKX_STREAM_START', id: r.id, url: 'websocket' });
     }
@@ -222,15 +224,36 @@
     if (!r || r.finished) return;
     r.finished = true;
     clearTimeout(r.timer);
-    emit({ type: 'GROKX_STREAM_DONE', id: r.id, full: r.strict || r.loose, strict: !!r.strict, sample: [], error: error || '' });
+    emit({ type: 'GROKX_STREAM_DONE', id: r.id, full: r.strict || r.loose, strict: !!r.strict,
+           sample: r.trace, error: error || '' });
     setTimeout(() => wsResponses.delete(rid), 60000);
   }
 
-  function wsArm(rid, ms) {
+  // Re-arm the end timer after every event of this response.
+  function wsArm(rid) {
     const r = wsResponses.get(rid);
     if (!r || r.finished) return;
     clearTimeout(r.timer);
+    const ms = (r.doneSeen && (r.strict || r.loose)) ? WS_DONE_GRACE_MS : WS_IDLE_DONE_MS;
     r.timer = setTimeout(() => wsFinish(rid), ms);
+  }
+
+  function traceEvent(r, ev) {
+    if (r.trace.length >= 60) return;
+    let d = ev.type;
+    const c = ev.chunk;
+    if (c) {
+      const keys = Object.keys(c).filter((k) => k !== 'metadata');
+      d += ' ' + keys.join(',');
+      if (c.text) d += ' [' + (c.text.channel || '') + '] ' + String(c.text.text || '').slice(0, 60);
+    }
+    if (ev.item && ev.item.type) d += ' item=' + ev.item.type + (ev.item.role ? '/' + ev.item.role : '');
+    if (!/^response\.(chunk|created|content_part\.added|output_item\.added)$/.test(ev.type)) {
+      const rest = Object.assign({}, ev);
+      delete rest.type; delete rest.event_id; delete rest.response_id; delete rest.item_id;
+      d += ' ' + JSON.stringify(rest).slice(0, 700);
+    }
+    r.trace.push(d);
   }
 
   function onGrokWsText(data) {
@@ -242,38 +265,40 @@
     const rid = ev.response_id || (ev.response && ev.response.id);
     if (!rid) return;
 
-    if (t === 'response.created') {
-      wsResp(rid);
-    } else if (t === 'response.chunk') {
-      const r = wsResp(rid);
-      if (r.finished) return;
+    const r = wsResp(rid);
+    if (r.finished) return;
+    traceEvent(r, ev);
+
+    if (t === 'response.chunk') {
       const tx = ev.chunk && ev.chunk.text;
       if (tx && typeof tx.text === 'string' && tx.text) {
         const ch = String(tx.channel || '');
         if (ch === 'CHANNEL_ASSISTANT_RESPONSE') {
           r.strict += tx.text;
           emit({ type: 'GROKX_STREAM_CHUNK', id: r.id, delta: tx.text });
-        } else if (!/HEADER|THINK|REASON|NOTETAKER/i.test(ch)) {
+        } else if (!/HEADER|THINK|REASON|NOTETAKER|TOOL|SEARCH/i.test(ch)) {
           r.loose += tx.text;
         }
       }
-      wsArm(rid, WS_IDLE_DONE_MS);
     } else if (t === 'response.output_text.delta' && typeof ev.delta === 'string') {
-      const r = wsResp(rid);
-      if (r.finished) return;
       r.strict += ev.delta;
       emit({ type: 'GROKX_STREAM_CHUNK', id: r.id, delta: ev.delta });
-      wsArm(rid, WS_IDLE_DONE_MS);
+    } else if (t === 'response.grok.output' && ev.output && ev.output.stream_error) {
+      // e.g. {"kind":"usage_limit_reached","message":"You've reached your usage limit..."} (seen live)
+      const se = ev.output.stream_error;
+      r.streamError = 'GROK_ERROR ' + (se.kind || 'error') + ': ' + (se.message || '');
     } else if (t === 'response.output_text.done' || t === 'response.content_part.done') {
-      wsResp(rid);
-      wsArm(rid, WS_DONE_GRACE_MS);
+      r.doneSeen = true;
     } else if (t === 'response.done' || t === 'response.completed') {
-      wsResp(rid);
-      wsFinish(rid);
+      const resp = ev.response || {};
+      if (!r.strict && !r.loose && !r.streamError && resp.status && resp.status !== 'completed') {
+        r.streamError = 'GROK_ERROR ' + resp.status + ': ' + JSON.stringify(resp.status_details || {});
+      }
+      return wsFinish(rid, r.streamError);
     } else if (/failed|error|cancel/i.test(t)) {
-      wsResp(rid);
-      wsFinish(rid, t + ': ' + JSON.stringify(ev.error || ev.response || {}).slice(0, 300));
+      return wsFinish(rid, t + ': ' + JSON.stringify(ev.error || ev.response || {}).slice(0, 300));
     }
+    wsArm(rid);
   }
 
   const OrigWS = window.WebSocket;

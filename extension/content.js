@@ -131,20 +131,26 @@
 
   function setInputText(el, text) {
     el.focus();
+    // Empty the box first, explicitly: "select all + insert" appended instead of replacing on
+    // the live page, which doubled the prompt on retries.
     if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-      el.select();
+      const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      if (el.value) {
+        Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, '');
+        el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+      }
+      el.focus();
+      el.setSelectionRange(0, 0);
     } else {
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
+      try { document.execCommand('selectAll', false, null); document.execCommand('delete', false, null); } catch (_) {}
+      if ((el.innerText || '').trim()) el.textContent = '';
     }
     let ok = false;
     try { ok = document.execCommand('insertText', false, text); } catch (_) {}
-    // Fallback only if nothing landed: rich editors normalise whitespace, so comparing the
-    // value with the prompt gives false negatives, and a second insert doubled the prompt (seen live).
-    if (!ok || !inputValue(el).trim()) {
+    // Fallback only if execCommand itself failed. The live editor applies the insert
+    // asynchronously, so "box still looks empty" right after it is normal, and inserting
+    // again doubled every prompt (seen live).
+    if (!ok) {
       if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
         const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
         Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, text);
@@ -221,7 +227,7 @@
   }
 
   const PAGE_SETTLE_MS = 3500;   // a just-loaded page shows the box before it can send (seen live)
-  const SUBMIT_TRIES = 4;
+  const SUBMIT_WINDOW_MS = 40000;  // keep retrying Enter this long: a heavy reload can take a while
 
   function clearInput(input) {
     try {
@@ -240,19 +246,23 @@
 
   function submitQuery(id, text, input) {
     const since = Date.now() - 500;
+    q.since = since;
     let tries = 0;
 
     function attempt() {
       if (!q || q.id !== id || q.streamId) return;
       if (tries > 0 && !inputValue(input).trim()) return;   // the last Enter went through
-      if (tries >= SUBMIT_TRIES) return;
+      if (Date.now() - since > SUBMIT_WINDOW_MS) return;
       tries++;
+      // The box may have been re-rendered by a reload; always use the live one.
+      const box = findInput() || input;
+      input = box;
       // (Re)type every time: if the editor was not hydrated yet, its state may lack the text.
-      setInputText(input, text);
+      setInputText(box, text);
       q.timers.push(setTimeout(() => {
         if (!q || q.id !== id) return;
-        pressEnter(input);
-        q.timers.push(setTimeout(attempt, RESUBMIT_AFTER_MS));
+        pressEnter(box);
+        q.timers.push(setTimeout(attempt, RESUBMIT_AFTER_MS + 500));
       }, 150));
     }
 
@@ -317,9 +327,11 @@
     } else if (evt.type === 'GROKX_STREAM_DONE') {
       if (evt.id !== q.streamId) return;
       const full = evt.full || q.full;
-      if (!full) {
+      if (!full && evt.error && evt.error.startsWith('GROK_ERROR ')) {
+        failQuery(evt.error);   // Grok said why (usage limit etc.): no diagnostics dump needed
+      } else if (!full) {
         failQuery('Grok stream ended without answer text.' + (evt.error ? ' ' + evt.error : '') +
-                  ' First lines: ' + JSON.stringify(evt.sample || []));
+                  '\n Events of this response:\n  ' + (evt.sample || []).join('\n  ') + netReport(q.since || 0));
       } else if (!q.full && full) {
         // Strict token filter matched nothing during streaming: deliver the fallback text at once.
         send({ type: 'chunk', query_id: q.id, delta: full, full: full });

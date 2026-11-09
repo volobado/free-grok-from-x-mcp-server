@@ -100,7 +100,12 @@ class GrokCLI:
                 console.print(f"[dim]─── {time.time() - start:.1f}s • {self.channel_label()}{note} ───[/dim]\n")
 
         if error:
-            err_console.print(f"[bold red]✗ Ошибка:[/bold red] {error}")
+            if "usage_limit" in error:
+                err_console.print("[bold yellow]⏳ Лимит бесплатного Grok на этом аккаунте исчерпан.[/bold yellow] "
+                                  "Grok пишет: попробуйте позже. grokx тут ни при чём.")
+            else:
+                err_console.print("[bold red]✗ Ошибка:[/bold red] ", end="")
+                err_console.print(error, markup=False, highlight=False)
             return bool(full)
         if not full:
             err_console.print("[yellow]Grok ничего не ответил.[/yellow]")

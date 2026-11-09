@@ -272,6 +272,9 @@ class GrokCDPClient:
                     yield {"type": "chunk", "delta": delta, "full": full}
                 elif etype == "GROKX_STREAM_DONE" and evt.get("id") == stream_id:
                     final = evt.get("full") or full
+                    if not final and str(evt.get("error", "")).startswith("GROK_ERROR "):
+                        yield {"type": "error", "error": evt["error"]}
+                        return
                     if not final:
                         yield {"type": "error", "error": "Grok stream ended without text. Sample: "
                                                          + json.dumps(evt.get("sample", []), ensure_ascii=False)}
