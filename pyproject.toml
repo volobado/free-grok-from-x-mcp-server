@@ -1,0 +1,31 @@
+[project]
+name = "grokx-cli"
+version = "1.5.0"
+description = "Free Grok from X in your terminal and as an MCP server: uses your own logged-in x.com session via a Chrome extension"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Volo Bado", email = "274094911+volobado@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+keywords = ["grok", "x", "twitter", "mcp", "mcp-server", "claude", "cli", "chrome-extension"]
+dependencies = [
+    "mcp>=1.8,<2",
+    "playwright>=1.64.1",
+    "prompt-toolkit>=3.0.53",
+    "pyperclip>=1.11.0",
+    "rich>=15.0.0",
+    "websockets>=17.4",
+]
+
+[project.urls]
+Repository = "https://github.com/volobado/free-grok-from-x-mcp-server"
+
+[project.scripts]
+grokx = "grokx_cli:main"
+grokx-cli = "grokx_cli:main"
+grokx-mcp = "grokx_cli.mcp_server:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"

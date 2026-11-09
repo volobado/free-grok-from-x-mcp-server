@@ -1,0 +1,69 @@
+#grokx-bridge-badge {
+  position: fixed;
+  bottom: 18px;
+  right: 18px;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(15, 20, 25, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  padding: 6px 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: #e7e9ea;
+  user-select: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#grokx-bridge-badge:hover {
+  transform: translateY(-2px);
+  border-color: rgba(29, 155, 240, 0.4);
+  background: rgba(22, 30, 39, 0.95);
+}
+
+.grokx-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.grokx-dot-connected {
+  background-color: #00ba7c;
+  box-shadow: 0 0 8px #00ba7c;
+}
+
+.grokx-dot-disconnected {
+  background-color: #71767b;
+  box-shadow: none;
+}
+
+.grokx-dot-idle {
+  background-color: #8b6f00;
+  box-shadow: none;
+}
+
+.grokx-dot-busy {
+  background-color: #1d9bf0;
+  box-shadow: 0 0 10px #1d9bf0;
+  animation: grokx-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes grokx-pulse {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+}
